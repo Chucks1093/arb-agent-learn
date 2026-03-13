@@ -1,21 +1,25 @@
-function getEnv(name: string, fallback?: string): string {
-  const value = process.env[name];
+import { z } from "zod";
 
-  if (value) {
-    return value;
-  }
+const envSchema = z.object({
+  NEXT_PUBLIC_SUPABASE_URL: z.url(),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
+  CLIENT_ORIGIN: z.string().default("http://localhost:5173"),
+  BASE_RPC_URL: z.string().default("https://mainnet.base.org"),
+  SESSION_COOKIE_NAME: z.string().default("arb_agent_session"),
+});
 
-  if (fallback !== undefined) {
-    return fallback;
-  }
-
-  throw new Error(`Missing required env var: ${name}`);
-}
+const parsedEnv = envSchema.parse({
+  NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
+  SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+  CLIENT_ORIGIN: process.env.CLIENT_ORIGIN,
+  BASE_RPC_URL: process.env.BASE_RPC_URL,
+  SESSION_COOKIE_NAME: process.env.SESSION_COOKIE_NAME,
+});
 
 export const env = {
-  supabaseUrl: getEnv("NEXT_PUBLIC_SUPABASE_URL"),
-  supabaseServiceRoleKey: getEnv("SUPABASE_SERVICE_ROLE_KEY"),
-  clientOrigin: getEnv("CLIENT_ORIGIN", "http://localhost:5173"),
-  baseRpcUrl: getEnv("BASE_RPC_URL", "https://mainnet.base.org"),
-  sessionCookieName: getEnv("SESSION_COOKIE_NAME", "arb_agent_session"),
+  supabaseUrl: parsedEnv.NEXT_PUBLIC_SUPABASE_URL,
+  supabaseServiceRoleKey: parsedEnv.SUPABASE_SERVICE_ROLE_KEY,
+  clientOrigin: parsedEnv.CLIENT_ORIGIN,
+  baseRpcUrl: parsedEnv.BASE_RPC_URL,
+  sessionCookieName: parsedEnv.SESSION_COOKIE_NAME,
 };

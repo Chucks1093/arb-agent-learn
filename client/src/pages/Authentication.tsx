@@ -1,6 +1,97 @@
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { createBaseAccountSDK } from '@base-org/account';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { authService } from '@/services/auth.service';
+import showToast from '@/utils/toast.util';
 
 function Authentication() {
+	const queryClient = useQueryClient();
+
+	const { data: sessionData } = useQuery({
+		queryKey: ['auth-session'],
+		queryFn: () => authService.getSession(),
+	});
+
+	const { data: nonceData } = useQuery({
+		queryKey: ['auth-nonce'],
+		queryFn: () => authService.getNonce(),
+		staleTime: 1000 * 60 * 5,
+	});
+
+	const signInWithBaseMutation = useMutation({
+		mutationFn: async () => {
+			const nonce = nonceData?.nonce ?? (await authService.getNonce()).nonce;
+
+			const provider = createBaseAccountSDK({
+				appName: 'ARBAgent',
+			}).getProvider();
+
+			const connectResponse = (await provider.request({
+				method: 'wallet_switchEthereumChain',
+				params: [{ chainId: '0x2105' }],
+			})) as unknown;
+
+			console.log('Switch chain response:', connectResponse);
+
+			const walletConnectResponse = (await provider.request({
+				method: 'wallet_connect',
+				params: [
+					{
+						version: '1',
+						capabilities: {
+							signInWithEthereum: {
+								nonce,
+								chainId: '0x2105',
+							},
+						},
+					},
+				],
+			})) as {
+				accounts: Array<{
+					address: string;
+					capabilities?: {
+						signInWithEthereum?: {
+							message: string;
+							signature: string;
+						};
+					};
+				}>;
+			};
+
+			const account = walletConnectResponse.accounts?.[0];
+
+			if (!account?.address) {
+				throw new Error('No account address received from wallet');
+			}
+
+			const signInPayload = account.capabilities?.signInWithEthereum;
+
+			if (!signInPayload?.message || !signInPayload.signature) {
+				throw new Error('Missing sign-in payload from Base wallet');
+			}
+
+			return authService.verify({
+				address: account.address,
+				message: signInPayload.message,
+				signature: signInPayload.signature,
+			});
+		},
+		onSuccess: async data => {
+			await queryClient.invalidateQueries({ queryKey: ['auth-session'] });
+			await queryClient.invalidateQueries({ queryKey: ['auth-nonce'] });
+			showToast.success(`Signed in: ${data.address}`);
+		},
+		onError: error => {
+			showToast.error(
+				error instanceof Error ? error.message : 'Failed to sign in with Base'
+			);
+		},
+	});
+
+	const handleSignInWithBase = async () => {
+		await signInWithBaseMutation.mutateAsync();
+	};
+
 	return (
 		<div className="grid grid-cols-1 lg:grid-cols-[55%_45%] grid-rows-[100vh]   h-screen">
 			<div className="h-full ">
@@ -30,13 +121,24 @@ function Authentication() {
 									<hr className="w-full bg-zinc-400" />
 								</div>
 								<div className="flex items-center justify-center mt-8 gap-4">
-									<button className="w-full flex items-center justify-center gap-3 border border-gray-300 py-4 px-4 rounded-md hover:bg-gray-50 hover:border-gray-400 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+									<button
+										onClick={handleSignInWithBase}
+										disabled={signInWithBaseMutation.isPending}
+										className="w-full flex items-center justify-center gap-3 border border-gray-300 py-4 px-4 rounded-md hover:bg-gray-50 hover:border-gray-400 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed"
+									>
 										<div className="h-4 w-4 rounded-[3px] bg-blue-600 shrink-0" />
 										<span className="text-sm font-jakarta font-medium text-gray-700">
-											Sign in with Base
+											{signInWithBaseMutation.isPending
+												? 'Connecting...'
+												: 'Sign in with Base'}
 										</span>
 									</button>
 								</div>
+								{sessionData?.authenticated && sessionData.address ? (
+									<p className="mt-4 text-sm font-jakarta text-green-700">
+										Signed in as {sessionData.address}
+									</p>
+								) : null}
 							</div>
 						</div>
 					</div>

@@ -2,9 +2,9 @@ import { NextRequest } from "next/server";
 import { createPublicClient, http } from "viem";
 import { base } from "viem/chains";
 import { fail, ok } from "@/lib/api";
-import { consumeNonce, createNonce } from "@/lib/auth-store";
+import { consumeNonce, createNonce } from "@/lib/auth/auth-store";
 import { env } from "@/lib/env";
-import { setSessionCookie } from "@/lib/session";
+import { setSessionCookie } from "@/lib/auth/session";
 
 const client = createPublicClient({
   chain: base,
@@ -27,7 +27,7 @@ function extractNonce(message: string) {
 }
 
 export async function GET() {
-  const nonce = createNonce();
+  const nonce = await createNonce();
   return ok({ nonce });
 }
 
@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
   }
 
   const nonce = extractNonce(body.message);
-  if (!nonce || !consumeNonce(nonce)) {
+  if (!nonce || !(await consumeNonce(nonce))) {
     return fail("Invalid or reused nonce", 401);
   }
 
