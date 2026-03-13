@@ -32,7 +32,7 @@ export async function setSessionCookie(address: string) {
   cookieStore.set(env.sessionCookieName, createSessionToken(address), {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
+    sameSite: "none",
     path: "/",
     maxAge: 60 * 60 * 24 * 7,
   });

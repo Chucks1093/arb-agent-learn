@@ -3,6 +3,7 @@ import { createBaseAccountSDK } from '@base-org/account';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { authService } from '@/services/auth.service';
 import showToast from '@/utils/toast.util';
+import { shortenAddress } from '@/lib/web3/format';
 
 function Authentication() {
 	const queryClient = useQueryClient();
@@ -79,11 +80,13 @@ function Authentication() {
 		onSuccess: async data => {
 			await queryClient.invalidateQueries({ queryKey: ['auth-session'] });
 			await queryClient.invalidateQueries({ queryKey: ['auth-nonce'] });
-			showToast.success(`Signed in: ${data.address}`);
+			showToast.success(`Signed in: ${shortenAddress(data.address)}`);
 		},
 		onError: error => {
 			showToast.error(
-				error instanceof Error ? error.message : 'Failed to sign in with Base'
+				error instanceof Error
+					? error.message
+					: 'Failed to sign in with Base'
 			);
 		},
 	});
@@ -136,7 +139,7 @@ function Authentication() {
 								</div>
 								{sessionData?.authenticated && sessionData.address ? (
 									<p className="mt-4 text-sm font-jakarta text-green-700">
-										Signed in as {sessionData.address}
+										Signed in as {shortenAddress(sessionData.address)}
 									</p>
 								) : null}
 							</div>
