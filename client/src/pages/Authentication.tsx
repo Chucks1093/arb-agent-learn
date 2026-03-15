@@ -18,7 +18,6 @@ function Authentication() {
 	const { data: nonceData } = useQuery({
 		queryKey: ['auth-nonce'],
 		queryFn: () => authService.getNonce(),
-		staleTime: 1000 * 60 * 5,
 	});
 
 	const signInWithBaseMutation = useMutation({
@@ -73,15 +72,19 @@ function Authentication() {
 				throw new Error('Missing sign-in payload from Base wallet');
 			}
 
-			return authService.verify({
+			return await authService.verify({
 				address: account.address,
 				message: signInPayload.message,
 				signature: signInPayload.signature,
 			});
 		},
 		onSuccess: async data => {
-			await queryClient.invalidateQueries({ queryKey: ['auth-session'] });
-			await queryClient.invalidateQueries({ queryKey: ['auth-nonce'] });
+			queryClient.setQueryData(['auth-session'], {
+				authenticated: true,
+				address: data.address,
+			});
+			void queryClient.invalidateQueries({ queryKey: ['auth-session'] });
+			void queryClient.invalidateQueries({ queryKey: ['auth-nonce'] });
 			showToast.success(`Signed in: ${shortenAddress(data.address)}`);
 			navigate('/', { replace: true });
 		},

@@ -12,10 +12,12 @@ export function createSessionToken(address: string) {
 }
 
 function getSessionCookieOptions() {
+  const isProduction = process.env.NODE_ENV === "production";
+
   return {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "none" as const,
+    secure: isProduction,
+    sameSite: isProduction ? ("none" as const) : ("lax" as const),
     path: "/",
     maxAge: 60 * 60 * 24 * 7,
   };
