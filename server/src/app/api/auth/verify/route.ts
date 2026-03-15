@@ -4,7 +4,7 @@ import { base } from "viem/chains";
 import { fail, ok } from "@/lib/api";
 import { consumeNonce, createNonce } from "@/lib/auth/auth-store";
 import { env } from "@/lib/env";
-import { setSessionCookie } from "@/lib/auth/session";
+import { setSessionCookieOnResponse } from "@/lib/auth/session";
 
 const client = createPublicClient({
   chain: base,
@@ -53,7 +53,6 @@ export async function POST(request: NextRequest) {
     return fail("Invalid signature", 401);
   }
 
-  await setSessionCookie(body.address);
-
-  return ok({ address: body.address });
+  const response = ok({ address: body.address });
+  return setSessionCookieOnResponse(response, body.address);
 }

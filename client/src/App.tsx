@@ -1,26 +1,24 @@
 import './App.css';
-import { createBrowserRouter, redirect, RouterProvider } from 'react-router';
-import Register from './pages/coursehub/Register';
+import { createBrowserRouter, RouterProvider } from 'react-router';
 import { Toaster } from 'react-hot-toast';
 import Authentication from './pages/Authentication';
+import Dashboard from './pages/Dashboard';
+import { authService } from './services/auth.service';
 
 const router = createBrowserRouter([
 	{
 		path: '/',
-		loader: () => redirect('/coursehub/login'),
+		element: <Dashboard />,
+		loader: () => authService.requireAuthLoader(),
 	},
 	{
-		path: '/coursehub',
-		children: [
-			{
-				path: 'register',
-				element: <Register />,
-			},
-			{
-				path: 'login',
-				element: <Authentication />,
-			},
-		],
+		path: '/auth',
+		element: <Authentication />,
+		loader: () => authService.guestOnlyLoader(),
+	},
+	{
+		path: '*',
+		loader: () => authService.rootLoader(),
 	},
 ]);
 

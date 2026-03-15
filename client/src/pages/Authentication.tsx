@@ -4,9 +4,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { authService } from '@/services/auth.service';
 import showToast from '@/utils/toast.util';
 import { shortenAddress } from '@/lib/web3/format';
+import { useNavigate } from 'react-router';
 
 function Authentication() {
 	const queryClient = useQueryClient();
+	const navigate = useNavigate();
 
 	const { data: sessionData } = useQuery({
 		queryKey: ['auth-session'],
@@ -81,6 +83,7 @@ function Authentication() {
 			await queryClient.invalidateQueries({ queryKey: ['auth-session'] });
 			await queryClient.invalidateQueries({ queryKey: ['auth-nonce'] });
 			showToast.success(`Signed in: ${shortenAddress(data.address)}`);
+			navigate('/', { replace: true });
 		},
 		onError: error => {
 			showToast.error(

@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { type NextResponse } from "next/server";
 import { env } from "@/lib/env";
 
 type SessionPayload = {
@@ -8,6 +9,16 @@ type SessionPayload = {
 
 export function createSessionToken(address: string) {
   return Buffer.from(`${address}:${Date.now()}`).toString("base64");
+}
+
+function getSessionCookieOptions() {
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "none" as const,
+    path: "/",
+    maxAge: 60 * 60 * 24 * 7,
+  };
 }
 
 export function parseSessionToken(token: string): SessionPayload | null {
@@ -29,13 +40,31 @@ export function parseSessionToken(token: string): SessionPayload | null {
 
 export async function setSessionCookie(address: string) {
   const cookieStore = await cookies();
-  cookieStore.set(env.sessionCookieName, createSessionToken(address), {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "none",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 7,
+  cookieStore.set(
+    env.sessionCookieName,
+    createSessionToken(address),
+    getSessionCookieOptions(),
+  );
+}
+
+export function setSessionCookieOnResponse(response: NextResponse, address: string) {
+  response.cookies.set(
+    env.sessionCookieName,
+    createSessionToken(address),
+    getSessionCookieOptions(),
+  );
+
+  return response;
+}
+
+export function clearSessionCookieOnResponse(response: NextResponse) {
+  response.cookies.set(env.sessionCookieName, "", {
+    ...getSessionCookieOptions(),
+    maxAge: 0,
+    expires: new Date(0),
   });
+
+  return response;
 }
 
 export async function getSession() {
