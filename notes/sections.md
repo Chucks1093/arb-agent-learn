@@ -163,4 +163,4 @@ At any point, we should always know:
 
 We are moving into:
 
-`Section 4: Server Wallet / Agent Wallet`
+`Section 6: Base Chain and DEX Configuration`

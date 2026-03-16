@@ -181,10 +181,39 @@ The helper now supports both modes:
 
 The wallet metadata is intended to persist in Supabase so sign-in does not keep creating new CDP accounts for the same user.
 
+## Spend-Permission Readiness
+
+Before starting Section 5, we tightened wallet creation to match the CDP spend-permissions path more closely.
+
+The important change is:
+
+- smart accounts are now created with `enableSpendPermissions: true`
+
+This matters because Section 5 depends on the smart account being able to receive and use spend permissions.
+
+We also added deterministic idempotency keys for wallet creation so retries are less likely to create duplicate CDP accounts if something fails between CDP creation and our Supabase save.
+
+## New Metadata
+
+We now track whether the wallet is spend-permission-ready:
+
+- `spend_permissions_enabled`
+
+This is stored in Supabase as part of the agent wallet metadata.
+
+Existing old CDP wallets that were created before this change may still have this flag as `false`.
+
+That means:
+
+- old wallet rows may exist
+- but they may not be the correct final wallet shape for Section 5
+
+If we hit that case later, we will handle it deliberately instead of silently assuming every old wallet is ready.
+
 ## Next Step
 
-Wire this route into the dashboard so the user can see:
+Move into Section 5:
 
-- owner address
-- smart account address
-- mode: mock or cdp
+- define how spend-permission metadata should be stored in Supabase
+- request permission from the frontend
+- show permission status on the dashboard

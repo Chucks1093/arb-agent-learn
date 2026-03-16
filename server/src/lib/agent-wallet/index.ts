@@ -1,5 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { CdpClient } from "@coinbase/cdp-sdk";
+import {
+  CdpClient,
+  spendPermissionManagerAddress,
+  type EvmSmartAccount,
+} from "@coinbase/cdp-sdk";
 import { getAddress, keccak256, toHex } from "viem";
 import { env } from "@/lib/env";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
@@ -10,6 +14,7 @@ export type AgentWallet = {
   smartAccountAddress: string;
   ownerName: string | null;
   smartAccountName: string | null;
+  spendPermissionsEnabled: boolean;
   mode: "mock" | "cdp";
   createdAt: string;
 };
@@ -20,6 +25,7 @@ type AgentWalletRow = {
   smart_account_address: string;
   owner_name: string | null;
   smart_account_name: string | null;
+  spend_permissions_enabled: boolean;
   mode: "mock" | "cdp";
   created_at: string;
 };
@@ -40,6 +46,7 @@ function toAgentWallet(row: AgentWalletRow): AgentWallet {
     smartAccountAddress: getAddress(row.smart_account_address),
     ownerName: row.owner_name,
     smartAccountName: row.smart_account_name,
+    spendPermissionsEnabled: row.spend_permissions_enabled,
     mode: row.mode,
     createdAt: row.created_at,
   };
@@ -52,6 +59,7 @@ function toRow(wallet: AgentWallet): AgentWalletRow {
     smart_account_address: wallet.smartAccountAddress,
     owner_name: wallet.ownerName,
     smart_account_name: wallet.smartAccountName,
+    spend_permissions_enabled: wallet.spendPermissionsEnabled,
     mode: wallet.mode,
     created_at: wallet.createdAt,
   };
@@ -74,6 +82,17 @@ function buildSmartAccountName(userAddress: string) {
   return `arb-smart-${buildAccountSlug(userAddress)}`;
 }
 
+function buildSpendReadySmartAccountName(userAddress: string) {
+  return `arb-smartp-${buildAccountSlug(userAddress)}`;
+}
+
+function hasSpendPermissionsEnabled(smartAccount: EvmSmartAccount) {
+  return smartAccount.owners.some(
+    (owner) =>
+      owner.address.toLowerCase() === spendPermissionManagerAddress.toLowerCase(),
+  );
+}
+
 function createMockAgentWallet(userAddress: string): AgentWallet {
   const normalizedUserAddress = getAddress(userAddress);
 
@@ -83,6 +102,7 @@ function createMockAgentWallet(userAddress: string): AgentWallet {
     smartAccountAddress: deriveAddress(`smart:${normalizedUserAddress}`),
     ownerName: buildOwnerName(normalizedUserAddress),
     smartAccountName: buildSmartAccountName(normalizedUserAddress),
+    spendPermissionsEnabled: true,
     mode: "mock",
     createdAt: new Date().toISOString(),
   };
@@ -114,7 +134,7 @@ async function loadWalletRowByUserAddress(userAddress: string) {
   const { data, error } = await supabaseAdmin
     .from("agent_wallets")
     .select(
-      "user_address, owner_address, smart_account_address, owner_name, smart_account_name, mode, created_at",
+      "user_address, owner_address, smart_account_address, owner_name, smart_account_name, spend_permissions_enabled, mode, created_at",
     )
     .eq("user_address", getAddress(userAddress))
     .maybeSingle<AgentWalletRow>();
@@ -146,15 +166,27 @@ async function createRealAgentWallet(userAddress: string): Promise<AgentWallet> 
   const cdp = getCdpClient();
 
   const ownerName = buildOwnerName(normalizedUserAddress);
-  const owner = await cdp.evm.createAccount({
+  const owner = await cdp.evm.getOrCreateAccount({
     name: ownerName,
   });
 
-  const smartAccountName = buildSmartAccountName(normalizedUserAddress);
-  const smartAccount = await cdp.evm.createSmartAccount({
+  const primarySmartAccountName = buildSmartAccountName(normalizedUserAddress);
+  let smartAccount = await cdp.evm.getOrCreateSmartAccount({
     owner,
-    name: smartAccountName,
-  } as any);
+    name: primarySmartAccountName,
+    enableSpendPermissions: true,
+  });
+
+  let smartAccountName = primarySmartAccountName;
+
+  if (!hasSpendPermissionsEnabled(smartAccount)) {
+    smartAccountName = buildSpendReadySmartAccountName(normalizedUserAddress);
+    smartAccount = await cdp.evm.getOrCreateSmartAccount({
+      owner,
+      name: smartAccountName,
+      enableSpendPermissions: true,
+    });
+  }
 
   agentWalletRuntimeByUser.set(normalizedUserAddress, {
     owner,
@@ -167,6 +199,7 @@ async function createRealAgentWallet(userAddress: string): Promise<AgentWallet> 
     smartAccountAddress: getAddress(smartAccount.address),
     ownerName,
     smartAccountName,
+    spendPermissionsEnabled: true,
     mode: "cdp",
     createdAt: new Date().toISOString(),
   };

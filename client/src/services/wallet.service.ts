@@ -4,6 +4,7 @@ export interface AgentWallet {
 	userAddress: string;
 	ownerAddress: string;
 	smartAccountAddress: string;
+	spendPermissionsEnabled: boolean;
 	mode: 'mock' | 'cdp';
 	createdAt: string;
 }
