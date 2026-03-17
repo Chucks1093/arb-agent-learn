@@ -22,6 +22,7 @@ interface FormInputProps {
 	suffix?: React.ReactNode;
 	// Optional wrapper className for the input container
 	wrapperClassName?: string;
+	labelClassName?: string;
 }
 
 export const FormInput: React.FC<FormInputProps> = ({
@@ -42,6 +43,7 @@ export const FormInput: React.FC<FormInputProps> = ({
 	prefix,
 	suffix,
 	wrapperClassName = '',
+	labelClassName = '',
 }) => {
 	// Local display state is used only for number inputs so we can
 	// show formatted (comma separated) values while keeping the
@@ -191,7 +193,10 @@ export const FormInput: React.FC<FormInputProps> = ({
 		<div className="space-y-2">
 			<label
 				htmlFor={inputId}
-				className="block text-sm font-medium text-gray-600"
+				className={cn(
+					'block text-sm font-medium text-gray-600',
+					labelClassName
+				)}
 			>
 				{label}
 				{required && <span className="text-red-500 ml-1">*</span>}

@@ -1,6 +1,10 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLoaderData, useNavigate } from 'react-router';
+import { z } from 'zod';
+import CheckboxOption from '@/components/common/CheckboxOption';
+import FormInput from '@/components/common/FormInput';
+import { useZodValidation } from '@/hooks/useZodValidation';
 import {
 	authService,
 	type SessionResponse,
@@ -9,6 +13,7 @@ import { walletService } from '@/services/wallet.service';
 import {
 	arbitrageService,
 	type ArbitragePath,
+	type ExecuteArbitrageResult,
 } from '@/services/arbitrage.service';
 import {
 	getSpendPermissionStatus,
@@ -22,12 +27,32 @@ import {
 import showToast from '@/utils/toast.util';
 import { shortenAddress } from '@/lib/web3/format';
 
+const ScanTradeSchema = z.object({
+	amountUsdc: z
+		.string()
+		.min(1, 'Amount is required')
+		.refine(value => Number(value) > 0, 'Amount must be greater than 0'),
+	executeImmediately: z.boolean(),
+});
+
+type ScanTradeData = z.infer<typeof ScanTradeSchema>;
+
+const DEFAULT_MIN_NET_PROFIT_USDC = '0.01';
+const DEFAULT_SLIPPAGE_BPS = 100;
+
 function Dashboard() {
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
 	const loaderSession = useLoaderData() as SessionResponse;
 	const [dailyLimit, setDailyLimit] = useState(5);
-	const [scanAmount, setScanAmount] = useState('10');
+	const initialScanTradeData: ScanTradeData = {
+		amountUsdc: '10',
+		executeImmediately: false,
+	};
+	const [scanTradeData, setScanTradeData] =
+		useState<ScanTradeData>(initialScanTradeData);
+	const { errors, touched, validateAndTouch, validate, markAllTouched } =
+		useZodValidation(initialScanTradeData);
 
 	const { data: sessionData } = useQuery({
 		queryKey: ['auth-session'],
@@ -136,6 +161,31 @@ function Dashboard() {
 		},
 	});
 
+	const executeMutation = useMutation({
+		mutationFn: async () => {
+			const latestPermission = (permissionsData?.permissions ?? []).find(
+				permission => permission.status === 'active'
+			);
+
+			return arbitrageService.executeArbitrage({
+				amountUsdc: scanTradeData.amountUsdc,
+				permissionHash: latestPermission?.permissionHash,
+				minNetProfitUsdc: DEFAULT_MIN_NET_PROFIT_USDC,
+				slippageBps: DEFAULT_SLIPPAGE_BPS,
+			});
+		},
+		onSuccess: result => {
+			showToast.success(
+				result.executed ? 'Execution completed' : 'Execution skipped'
+			);
+		},
+		onError: error => {
+			showToast.error(
+				error instanceof Error ? error.message : 'Failed to execute arbitrage'
+			);
+		},
+	});
+
 	const logoutMutation = useMutation({
 		mutationFn: () => authService.logout(),
 		onSuccess: async () => {
@@ -164,6 +214,122 @@ function Dashboard() {
 		Number(scanMutation.data.paths.aeroToUni.netProfitUsdc)
 			? scanMutation.data.paths.uniToAero
 			: scanMutation.data.paths.aeroToUni);
+
+	const latestActivePermission = (permissionsData?.permissions ?? []).find(
+		permission => permission.status === 'active'
+	);
+
+	const handleScanTradeInputChange = (
+		field: keyof ScanTradeData,
+		value: string | boolean
+	) => {
+		setScanTradeData(prev => {
+			const nextData = {
+				...prev,
+				[field]: value,
+			} as ScanTradeData;
+
+			if (field === 'amountUsdc') {
+				validateAndTouch(ScanTradeSchema, nextData, field);
+			}
+
+			return nextData;
+		});
+	};
+
+	const handleScanTradeSubmit = async () => {
+		const validatedData = validate(ScanTradeSchema, scanTradeData);
+		markAllTouched();
+
+		if (!validatedData) {
+			return;
+		}
+
+		if (validatedData.executeImmediately) {
+			if (!latestActivePermission) {
+				showToast.error(
+					'Grant a spend permission first before executing trades'
+				);
+				return;
+			}
+
+			executeMutation.mutate();
+			return;
+		}
+
+		scanMutation.mutate(validatedData.amountUsdc);
+	};
+
+	const renderExecutionCard = (result: ExecuteArbitrageResult) => (
+		<div className="rounded-xl border border-white/8 bg-black/20 p-4">
+			<div className="flex items-center justify-between gap-4">
+				<div>
+					<p className="text-xs uppercase tracking-[0.16em] text-white/45">
+						Execution result
+					</p>
+					<p className="mt-2 text-lg font-medium text-white">
+						{result.executed ? 'Executed' : 'Skipped'}
+					</p>
+				</div>
+
+				<div
+					className={`rounded-full px-3 py-1 text-xs uppercase tracking-[0.16em] ${
+						result.executed
+							? 'border border-[#C6FF91]/30 bg-[#C6FF91]/10 text-[#C6FF91]'
+							: 'border border-white/10 bg-white/5 text-white/60'
+					}`}
+				>
+					{result.executed ? 'done' : 'no trade'}
+				</div>
+			</div>
+
+			<p className="mt-3 text-sm text-white/65">{result.reason}</p>
+
+			{result.execution ? (
+				<div className="mt-4 grid gap-3 md:grid-cols-3">
+					<div>
+						<p className="text-xs uppercase tracking-[0.16em] text-white/45">
+							Direction
+						</p>
+						<p className="mt-2 text-sm text-white">
+							{result.execution.direction}
+						</p>
+					</div>
+					<div>
+						<p className="text-xs uppercase tracking-[0.16em] text-white/45">
+							Returned
+						</p>
+						<p className="mt-2 text-sm text-white">
+							${result.execution.returnedAmountUsdc}
+						</p>
+					</div>
+					<div>
+						<p className="text-xs uppercase tracking-[0.16em] text-white/45">
+							Est. net
+						</p>
+						<p className="mt-2 text-sm text-white">
+							${result.execution.estimatedNetProfitUsdc}
+						</p>
+					</div>
+				</div>
+			) : null}
+
+			{result.execution?.userOpHashes.length ? (
+				<div className="mt-4">
+					<p className="text-xs uppercase tracking-[0.16em] text-white/45">
+						User operations
+					</p>
+					<div className="mt-2 space-y-2">
+						{result.execution.userOpHashes.map(hash => (
+							<p key={hash} className="text-xs text-white/60">
+								{shortenAddress(hash)}
+							</p>
+						))}
+					</div>
+				</div>
+			) : null}
+		</div>
+	);
 
 	const renderPathCard = (path: ArbitragePath, label: string) => (
 		<div className="rounded-xl border border-white/8 bg-black/20 p-4">
@@ -281,39 +447,71 @@ function Dashboard() {
 					</div>
 
 					<form
-						className="mt-6 flex flex-col gap-4 md:flex-row md:items-end"
+						className="mt-6"
 						onSubmit={event => {
 							event.preventDefault();
-							scanMutation.mutate(scanAmount);
+							handleScanTradeSubmit();
 						}}
 					>
-						<label className="block">
-							<span className="text-xs uppercase tracking-[0.16em] text-white/45">
-								USDC amount
-							</span>
-							<input
+						<div className="max-w-md space-y-6">
+							<FormInput
+								label="USDC amount"
+								value={scanTradeData.amountUsdc}
+								onChange={value =>
+									handleScanTradeInputChange('amountUsdc', value)
+								}
 								type="number"
-								min="0.01"
-								step="0.01"
-								value={scanAmount}
-								onChange={event => setScanAmount(event.target.value)}
-								className="mt-2 w-full rounded-lg border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-[#C6FF91] md:w-56"
+								required
+								placeholder="Enter the amount to trade"
+								error={errors.amountUsdc}
+								touched={touched.amountUsdc}
+								labelClassName="text-white/45"
+								wrapperClassName="!bg-black/20 !border-white/10"
+								className="!bg-transparent !text-white placeholder:!text-white/35"
 							/>
-						</label>
 
-						<button
-							type="submit"
-							disabled={scanMutation.isPending || Number(scanAmount) <= 0}
-							className="rounded-lg bg-[#C6FF91] px-5 py-3 text-sm font-medium text-[#020202] disabled:cursor-not-allowed disabled:opacity-60"
-						>
-							{scanMutation.isPending ? 'Scanning...' : 'Scan now'}
-						</button>
+							<CheckboxOption
+								checked={scanTradeData.executeImmediately}
+								onChange={checked =>
+									handleScanTradeInputChange(
+										'executeImmediately',
+										checked
+									)
+								}
+								label="Execute immediately if an opportunity is found"
+								className="mt-0"
+								boxClassName="!border-white/15"
+								checkedBoxClassName="!bg-[#C6FF91]"
+								uncheckedBoxClassName="!bg-white/5"
+								labelClassName="!text-white/65"
+							/>
+
+							<button
+								type="submit"
+								disabled={scanMutation.isPending || executeMutation.isPending}
+								className="rounded-lg bg-[#C6FF91] px-5 py-3 text-sm font-medium text-[#020202] disabled:cursor-not-allowed disabled:opacity-60"
+							>
+								{executeMutation.isPending
+									? 'Executing...'
+									: scanMutation.isPending
+										? 'Scanning...'
+										: scanTradeData.executeImmediately
+											? 'Scan and execute'
+											: 'Scan opportunity'}
+							</button>
+						</div>
 					</form>
 
 					<p className="mt-3 text-sm text-white/55">
-						This runs the server-side scanner once and returns the best current
-						path for the amount you entered.
+						Uses a default minimum net profit of ${DEFAULT_MIN_NET_PROFIT_USDC}
+						and a default slippage tolerance of {DEFAULT_SLIPPAGE_BPS} bps.
 					</p>
+
+					{!latestActivePermission ? (
+						<div className="mt-4 rounded-xl border border-white/8 bg-black/20 p-4 text-sm text-white/60">
+							Grant a spend permission first before execution can run.
+						</div>
+					) : null}
 
 					{scanMutation.data ? (
 						<div className="mt-6 space-y-4">
@@ -358,18 +556,15 @@ function Dashboard() {
 											{scanMutation.data.recommendation.expectedNetProfitUsdc}
 										</p>
 									</div>
+									<div>
+										<p className="text-xs uppercase tracking-[0.16em] text-white/45">
+											Slippage
+										</p>
+										<p className="mt-2 text-sm text-white">
+											{DEFAULT_SLIPPAGE_BPS} bps
+										</p>
+									</div>
 								</div>
-							</div>
-
-							<div className="grid gap-4 md:grid-cols-2">
-								{renderPathCard(
-									scanMutation.data.paths.uniToAero,
-									'Path 1'
-								)}
-								{renderPathCard(
-									scanMutation.data.paths.aeroToUni,
-									'Path 2'
-								)}
 							</div>
 
 							{bestPath ? (
@@ -378,7 +573,23 @@ function Dashboard() {
 									profit of ${bestPath.netProfitUsdc}.
 								</div>
 							) : null}
+
+							<div className="grid gap-4 md:grid-cols-2">
+								{renderPathCard(
+									scanMutation.data.paths.uniToAero,
+									'UNI_TO_AERO'
+								)}
+								{renderPathCard(
+									scanMutation.data.paths.aeroToUni,
+									'AERO_TO_UNI'
+								)}
+							</div>
+
 						</div>
+					) : null}
+
+					{executeMutation.data ? (
+						<div className="mt-6">{renderExecutionCard(executeMutation.data)}</div>
 					) : null}
 				</div>
 

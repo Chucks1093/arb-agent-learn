@@ -47,6 +47,32 @@ export interface ArbitrageScanResult {
 	};
 }
 
+export interface ExecuteArbitrageRequest {
+	amountUsdc: string;
+	permissionHash?: string;
+	minNetProfitUsdc?: string;
+	slippageBps?: number;
+}
+
+export interface ExecuteArbitrageResult {
+	executed: boolean;
+	reason: string;
+	permissionHash: string | null;
+	scan: ArbitrageScanResult;
+	execution: null | {
+		mode: 'mock' | 'cdp';
+		direction: Exclude<ArbitrageDirection, 'NO_OPPORTUNITY'>;
+		smartAccountAddress: string;
+		userAddress: string;
+		initialAmountUsdc: string;
+		returnedAmountUsdc: string;
+		grossProfitUsdc: string;
+		estimatedNetProfitUsdc: string;
+		slippageBps: number;
+		userOpHashes: string[];
+	};
+}
+
 class ArbitrageService extends BaseApiService {
 	async scanOpportunity(amountUsdc: string): Promise<ArbitrageScanResult> {
 		try {
@@ -63,6 +89,12 @@ class ArbitrageService extends BaseApiService {
 		} catch (error) {
 			throw this.handleError(error);
 		}
+	}
+
+	async executeArbitrage(
+		payload: ExecuteArbitrageRequest
+	): Promise<ExecuteArbitrageResult> {
+		return this.post<ExecuteArbitrageResult>('/execute', payload);
 	}
 }
 

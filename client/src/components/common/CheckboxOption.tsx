@@ -8,6 +8,10 @@ interface CheckboxOptionProps {
 	label: string;
 	disabled?: boolean;
 	className?: string;
+	boxClassName?: string;
+	labelClassName?: string;
+	checkedBoxClassName?: string;
+	uncheckedBoxClassName?: string;
 }
 
 const CheckboxOption: React.FC<CheckboxOptionProps> = ({
@@ -16,6 +20,10 @@ const CheckboxOption: React.FC<CheckboxOptionProps> = ({
 	label,
 	disabled = false,
 	className = '',
+	boxClassName = '',
+	labelClassName = '',
+	checkedBoxClassName = '',
+	uncheckedBoxClassName = '',
 }) => {
 	const handleToggle = () => {
 		if (!disabled) {
@@ -32,9 +40,11 @@ const CheckboxOption: React.FC<CheckboxOptionProps> = ({
 				className={cn(
 					'w-6 h-6 rounded-sm flex items-center justify-center transition-colors duration-200',
 					checked ? 'bg-blue-500' : 'bg-gray-200 border border-gray-300',
+					checked ? checkedBoxClassName : uncheckedBoxClassName,
 					disabled
 						? 'opacity-50 cursor-not-allowed'
-						: 'cursor-pointer hover:opacity-80'
+						: 'cursor-pointer hover:opacity-80',
+					boxClassName
 				)}
 			>
 				{checked && <Check className="w-4 h-4 text-white stroke-[3]" />}
@@ -43,7 +53,8 @@ const CheckboxOption: React.FC<CheckboxOptionProps> = ({
 			<p
 				className={cn(
 					'text-zinc-500 font-jakarta cursor-pointer select-none w-[90%]',
-					disabled && 'opacity-50'
+					disabled && 'opacity-50',
+					labelClassName
 				)}
 				onClick={handleToggle}
 			>
