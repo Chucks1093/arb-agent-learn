@@ -233,3 +233,38 @@ export async function getOrCreateAgentWalletForUser(userAddress: string) {
 
   return createAgentWalletForUser(userAddress);
 }
+
+export async function getSmartAccountRuntimeForUser(userAddress: string) {
+  const normalizedUserAddress = getAddress(userAddress);
+  const cachedRuntime = agentWalletRuntimeByUser.get(normalizedUserAddress);
+
+  if (cachedRuntime?.smartAccount) {
+    return cachedRuntime.smartAccount as EvmSmartAccount;
+  }
+
+  if (env.mockWeb3) {
+    return null;
+  }
+
+  const wallet = await loadWalletRowByUserAddress(normalizedUserAddress);
+  if (!wallet) {
+    return null;
+  }
+
+  const cdp = getCdpClient();
+  const owner = await cdp.evm.getOrCreateAccount({
+    name: wallet.ownerName ?? buildOwnerName(normalizedUserAddress),
+  });
+  const smartAccount = await cdp.evm.getOrCreateSmartAccount({
+    owner,
+    name: wallet.smartAccountName ?? buildSmartAccountName(normalizedUserAddress),
+    enableSpendPermissions: true,
+  });
+
+  agentWalletRuntimeByUser.set(normalizedUserAddress, {
+    owner,
+    smartAccount,
+  });
+
+  return smartAccount;
+}

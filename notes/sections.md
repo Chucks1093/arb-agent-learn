@@ -163,4 +163,4 @@ At any point, we should always know:
 
 We are moving into:
 
-`Section 6: Base Chain and DEX Configuration`
+`Section 8: Arbitrage Execution`

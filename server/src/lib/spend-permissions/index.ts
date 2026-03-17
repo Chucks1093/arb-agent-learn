@@ -101,6 +101,54 @@ export async function listSpendPermissionsForUser(userAddress: string) {
   return (data ?? []).map(toStoredSpendPermission);
 }
 
+export async function getSpendPermissionForUser(params: {
+  userAddress: string;
+  permissionHash: string;
+}) {
+  const { data, error } = await supabaseAdmin
+    .from("spend_permissions")
+    .select(
+      "permission_hash, user_address, smart_account_address, token_address, chain_id, allowance, period_seconds, start_unix, end_unix, salt, extra_data, signature, status, permission_json, granted_at, revoked_at, created_at, updated_at",
+    )
+    .eq("permission_hash", params.permissionHash)
+    .eq("user_address", getAddress(params.userAddress))
+    .maybeSingle<SpendPermissionRow>();
+
+  if (error) {
+    throw new Error(`Failed to load spend permission: ${error.message}`);
+  }
+
+  return data ? toStoredSpendPermission(data) : null;
+}
+
+export async function getLatestActiveSpendPermissionForUser(params: {
+  userAddress: string;
+  smartAccountAddress?: string;
+}) {
+  let query = supabaseAdmin
+    .from("spend_permissions")
+    .select(
+      "permission_hash, user_address, smart_account_address, token_address, chain_id, allowance, period_seconds, start_unix, end_unix, salt, extra_data, signature, status, permission_json, granted_at, revoked_at, created_at, updated_at",
+    )
+    .eq("user_address", getAddress(params.userAddress))
+    .eq("status", "active")
+    .order("created_at", { ascending: false })
+    .limit(1);
+
+  if (params.smartAccountAddress) {
+    query = query.eq("smart_account_address", getAddress(params.smartAccountAddress));
+  }
+
+  const { data, error } = await query.returns<SpendPermissionRow[]>();
+
+  if (error) {
+    throw new Error(`Failed to load latest active spend permission: ${error.message}`);
+  }
+
+  const row = data?.[0];
+  return row ? toStoredSpendPermission(row) : null;
+}
+
 export async function saveSpendPermission(permission: SpendPermissionPayload) {
   const account = getAddress(permission.permission.account);
   const spender = getAddress(permission.permission.spender);

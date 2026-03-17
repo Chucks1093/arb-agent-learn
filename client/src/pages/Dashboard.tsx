@@ -7,6 +7,10 @@ import {
 } from '@/services/auth.service';
 import { walletService } from '@/services/wallet.service';
 import {
+	arbitrageService,
+	type ArbitragePath,
+} from '@/services/arbitrage.service';
+import {
 	getSpendPermissionStatus,
 	requestUserSpendPermission,
 	revokeUserSpendPermission,
@@ -23,6 +27,7 @@ function Dashboard() {
 	const queryClient = useQueryClient();
 	const loaderSession = useLoaderData() as SessionResponse;
 	const [dailyLimit, setDailyLimit] = useState(5);
+	const [scanAmount, setScanAmount] = useState('10');
 
 	const { data: sessionData } = useQuery({
 		queryKey: ['auth-session'],
@@ -121,6 +126,16 @@ function Dashboard() {
 		},
 	});
 
+	const scanMutation = useMutation({
+		mutationFn: (amountUsdc: string) =>
+			arbitrageService.scanOpportunity(amountUsdc),
+		onError: error => {
+			showToast.error(
+				error instanceof Error ? error.message : 'Failed to scan opportunity'
+			);
+		},
+	});
+
 	const logoutMutation = useMutation({
 		mutationFn: () => authService.logout(),
 		onSuccess: async () => {
@@ -142,6 +157,83 @@ function Dashboard() {
 
 	const formatAllowance = (allowance: string) =>
 		(Number(allowance) / 1_000_000).toFixed(2);
+
+	const bestPath =
+		scanMutation.data &&
+		(Number(scanMutation.data.paths.uniToAero.netProfitUsdc) >=
+		Number(scanMutation.data.paths.aeroToUni.netProfitUsdc)
+			? scanMutation.data.paths.uniToAero
+			: scanMutation.data.paths.aeroToUni);
+
+	const renderPathCard = (path: ArbitragePath, label: string) => (
+		<div className="rounded-xl border border-white/8 bg-black/20 p-4">
+			<div className="flex items-center justify-between gap-4">
+				<div>
+					<p className="text-xs uppercase tracking-[0.16em] text-white/45">
+						{label}
+					</p>
+					<p className="mt-2 text-lg font-medium text-white">
+						{path.direction}
+					</p>
+				</div>
+
+				<div
+					className={`rounded-full px-3 py-1 text-xs uppercase tracking-[0.16em] ${
+						path.profitable
+							? 'border border-[#C6FF91]/30 bg-[#C6FF91]/10 text-[#C6FF91]'
+							: 'border border-white/10 bg-white/5 text-white/60'
+					}`}
+				>
+					{path.profitable ? 'profitable' : 'not profitable'}
+				</div>
+			</div>
+
+			<div className="mt-4 grid gap-3 md:grid-cols-2">
+				<div>
+					<p className="text-xs uppercase tracking-[0.16em] text-white/45">
+						Buy leg
+					</p>
+					<p className="mt-2 text-sm text-white/70">
+						{path.buyLeg.dex}: {path.buyLeg.amountInFormatted} in,{' '}
+						{path.buyLeg.amountOutFormatted} out
+					</p>
+				</div>
+
+				<div>
+					<p className="text-xs uppercase tracking-[0.16em] text-white/45">
+						Sell leg
+					</p>
+					<p className="mt-2 text-sm text-white/70">
+						{path.sellLeg.dex}: {path.sellLeg.amountInFormatted} in,{' '}
+						{path.sellLeg.amountOutFormatted} out
+					</p>
+				</div>
+			</div>
+
+			<div className="mt-4 grid gap-3 md:grid-cols-3">
+				<div>
+					<p className="text-xs uppercase tracking-[0.16em] text-white/45">
+						Gross profit
+					</p>
+					<p className="mt-2 text-sm text-white">${path.grossProfitUsdc}</p>
+				</div>
+
+				<div>
+					<p className="text-xs uppercase tracking-[0.16em] text-white/45">
+						Net profit
+					</p>
+					<p className="mt-2 text-sm text-white">${path.netProfitUsdc}</p>
+				</div>
+
+				<div>
+					<p className="text-xs uppercase tracking-[0.16em] text-white/45">
+						Margin
+					</p>
+					<p className="mt-2 text-sm text-white">{path.profitMarginPercent}%</p>
+				</div>
+			</div>
+		</div>
+	);
 
 	return (
 		<main className="min-h-screen bg-[#020202] text-white px-6 py-10">
@@ -176,6 +268,118 @@ function Dashboard() {
 							? shortenAddress(sessionData.address)
 							: 'Unknown'}
 					</p>
+				</div>
+
+				<div className="mt-6 rounded-2xl border border-white/10 bg-[#0A0A0A] p-6">
+					<div className="flex items-center justify-between gap-4">
+						<div>
+							<p className="text-sm text-white/60">Arbitrage scanner</p>
+							<h2 className="mt-2 text-xl font-medium text-white">
+								Check current spread with a manual amount
+							</h2>
+						</div>
+					</div>
+
+					<form
+						className="mt-6 flex flex-col gap-4 md:flex-row md:items-end"
+						onSubmit={event => {
+							event.preventDefault();
+							scanMutation.mutate(scanAmount);
+						}}
+					>
+						<label className="block">
+							<span className="text-xs uppercase tracking-[0.16em] text-white/45">
+								USDC amount
+							</span>
+							<input
+								type="number"
+								min="0.01"
+								step="0.01"
+								value={scanAmount}
+								onChange={event => setScanAmount(event.target.value)}
+								className="mt-2 w-full rounded-lg border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-[#C6FF91] md:w-56"
+							/>
+						</label>
+
+						<button
+							type="submit"
+							disabled={scanMutation.isPending || Number(scanAmount) <= 0}
+							className="rounded-lg bg-[#C6FF91] px-5 py-3 text-sm font-medium text-[#020202] disabled:cursor-not-allowed disabled:opacity-60"
+						>
+							{scanMutation.isPending ? 'Scanning...' : 'Scan now'}
+						</button>
+					</form>
+
+					<p className="mt-3 text-sm text-white/55">
+						This runs the server-side scanner once and returns the best current
+						path for the amount you entered.
+					</p>
+
+					{scanMutation.data ? (
+						<div className="mt-6 space-y-4">
+							<div className="rounded-xl border border-white/8 bg-black/20 p-4">
+								<p className="text-xs uppercase tracking-[0.16em] text-white/45">
+									Recommendation
+								</p>
+								<p className="mt-2 text-lg font-medium text-white">
+									{scanMutation.data.recommendation.action} /{' '}
+									{scanMutation.data.recommendation.direction}
+								</p>
+								<p className="mt-2 text-sm text-white/65">
+									{scanMutation.data.recommendation.reason}
+								</p>
+								<div className="mt-4 grid gap-3 md:grid-cols-3">
+									<div>
+										<p className="text-xs uppercase tracking-[0.16em] text-white/45">
+											Trade size
+										</p>
+										<p className="mt-2 text-sm text-white">
+											${scanMutation.data.tradeSizeUsdc}
+										</p>
+									</div>
+									<div>
+										<p className="text-xs uppercase tracking-[0.16em] text-white/45">
+											Expected gross
+										</p>
+										<p className="mt-2 text-sm text-white">
+											$
+											{
+												scanMutation.data.recommendation
+													.expectedGrossProfitUsdc
+											}
+										</p>
+									</div>
+									<div>
+										<p className="text-xs uppercase tracking-[0.16em] text-white/45">
+											Expected net
+										</p>
+										<p className="mt-2 text-sm text-white">
+											$
+											{scanMutation.data.recommendation.expectedNetProfitUsdc}
+										</p>
+									</div>
+								</div>
+							</div>
+
+							<div className="grid gap-4 md:grid-cols-2">
+								{renderPathCard(
+									scanMutation.data.paths.uniToAero,
+									'Path 1'
+								)}
+								{renderPathCard(
+									scanMutation.data.paths.aeroToUni,
+									'Path 2'
+								)}
+							</div>
+
+							{bestPath ? (
+								<div className="rounded-xl border border-[#C6FF91]/20 bg-[#C6FF91]/5 p-4 text-sm text-white/70">
+									Best current path: {bestPath.direction} with estimated net
+									profit of ${bestPath.netProfitUsdc}.
+								</div>
+							) : null}
+						</div>
+					) : null}
 				</div>
 
 				<div className="mt-6 rounded-2xl border border-white/10 bg-[#0A0A0A] p-6">

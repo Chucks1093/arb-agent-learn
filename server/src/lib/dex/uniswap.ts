@@ -1,6 +1,6 @@
 import { formatUnits, type Address } from "viem";
 import { BASE_ADDRESSES } from "@/lib/base/addresses";
-import { BASE_TOKENS } from "@/lib/base/tokens";
+import { getBaseTokenDecimals } from "@/lib/base/tokens";
 import { basePublicClient } from "@/lib/base/client";
 import { UNISWAP_V3_QUOTER_V2_ABI } from "@/lib/dex/abis/uniswapV3QuoterV2";
 import type { DexQuote } from "@/lib/dex/types";
@@ -32,7 +32,10 @@ export async function getUniswapV3ExactInQuote(params: {
           dex: "uniswap-v3",
           amountIn: params.amountIn.toString(),
           amountOut: amountOut.toString(),
-          amountOutFormatted: formatUnits(amountOut, BASE_TOKENS.WETH.decimals),
+          amountOutFormatted: formatUnits(
+            amountOut,
+            getBaseTokenDecimals(params.tokenOut),
+          ),
           available: true,
           route: {
             tokenIn: params.tokenIn,
